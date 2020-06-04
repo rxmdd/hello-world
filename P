@@ -1,40 +1,40 @@
 // ***********************************************************************
-// <copyright file="IAccessRequestsConsumerProvider.cs" company="Microsoft Corporation">
+// <copyright file="IPermissionRequestConsumerProvider.cs" company="Microsoft Corporation">
 //     Copyright (c) Microsoft Corporation. All rights reserved.
 // </copyright>
 // ***********************************************************************
 
-namespace IDEAs.DataPlatform.AccessControl.AccessRequestsConsumer.Providers
+namespace IDEAs.DataPlatform.AccessControl.PermissionRequestConsumer.Providers
 {
     using IDEAs.DataPlatform.AccessControl.Model;
     using System.Net.Http;
     using System.Threading.Tasks;
 
-    public interface IAccessRequestsConsumerProvider
+    public interface IPermissionRequestConsumerProvider
     {
         /// <summary>
         /// Removes a member from Eligibility as an asynchronous operation.
         /// </summary>
-        /// <param name="accessRequest">The access request.</param>
-        Task<HttpResponseMessage> RemoveFromEligibility(AccessRequest accessRequest);
+        /// <param name="permissionRequest">The permission request.</param>
+        Task<HttpResponseMessage> RemoveFromEligibility(PermissionRequest permissionRequest);
 
         /// <summary>
         /// Adds a member from Eligibility as an asynchronous operation.
         /// </summary>
-        /// <param name="accessRequest">The access request.</param>
-        Task<HttpResponseMessage> AddToEligibility(AccessRequest accessRequest);
+        /// <param name="permissionRequest">The permission request.</param>
+        Task<HttpResponseMessage> AddToEligibility(PermissionRequest permissionRequest);
 
         /// <summary>
-        /// Upsert access into DB.
+        /// Upsert permission into DB.
         /// </summary>
-        /// <param name="access">The access.</param>
-        Task UpsertAsync(Access access);
+        /// <param name="permission">The permission.</param>
+        Task UpsertAsync(Permission permission);
 
         /// <summary>
-        /// Delete access from DB.
+        /// Delete permission from DB.
         /// </summary>
-        /// <param name="access">The access.</param>
-        Task DeleteAsync(Access access);
+        /// <param name="permission">The permission.</param>
+        Task DeleteAsync(Permission permission);
 
         /// <summary>
         /// Get the catalog.
@@ -43,9 +43,9 @@ namespace IDEAs.DataPlatform.AccessControl.AccessRequestsConsumer.Providers
         Task<Catalog> GetCatalogAsync(string catalogId);
 
         /// <summary>
-        /// Get the access.
+        /// Get the permission.
         /// </summary>
-        /// <param name="accessRequest">The access request.</param>
-        Task<Access> GetAccessAsync(AccessRequest accessRequest);
+        /// <param name="permissionRequest">The permission request.</param>
+        Task<Permission> GetPermissionAsync(PermissionRequest permissionRequest);
     }
 }
