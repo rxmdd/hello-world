@@ -1,0 +1,176 @@
+// ***********************************************************************
+// <copyright file="AccessRequestsConsumer.cs" company="Microsoft Corporation">
+//     Copyright (c) Microsoft Corporation. All rights reserved.
+// </copyright>
+// ***********************************************************************
+
+namespace AccessRequestsConsumer
+{
+    using System;
+    using System.Threading.Tasks;
+    using System.Threading;
+    using IDEAs.DataPlatform.AccessControl.Model;
+    using IDEAs.DataPlatform.AccessControl.Common.QueueUtility;
+    using IDEAs.DataPlatform.AccessControl.AccessRequestsConsumer.Providers;
+    using IDEAs.DataPlatform.AccessControl.Common.Logging;
+    using System.Collections.Generic;
+    using System.Net.Http;
+    using System.Net;
+    using System.Configuration;
+    using IDEAs.DataPlatform.AccessControl.Common;
+    using Newtonsoft.Json;
+
+    public class AccessRequestsConsumer
+    {
+        private readonly static IAccessRequestsConsumerProvider accessRequestsConsumerProvider = new AccessRequestsConsumerProvider();
+        private static ILogger logger;
+
+        public static void Main(string[] args)
+        {
+            string keyVaultName = ConfigurationManager.AppSettings.Get("KeyVaultName");
+            string connectionString = KeyVaultProvider.GetSecretAsync(keyVaultName, "AccessRequestQueueConnectionString").Result;
+            string queueName = KeyVaultProvider.GetSecretAsync(keyVaultName, "AccessRequestQueueName").Result;
+            string customerId = KeyVaultProvider.GetSecretAsync(keyVaultName, "LoggerCustomerId").Result;
+            string sharedKey = KeyVaultProvider.GetSecretAsync(keyVaultName, "LoggerSharedKey").Result;
+            string traceTableName = ConfigurationManager.AppSettings.Get("TraceTableName");
+
+            SetRemoteLogger(customerId, sharedKey, traceTableName);
+            logger.LogInfoAsync("1d04b6de-81c9-4aea-bcef-5099483daedb", "Access request consumer starts working ... ").Wait();
+
+            ServiceBusQueueReceiver<List<AccessRequest>> receiver = new ServiceBusQueueReceiver<List<AccessRequest>>(connectionString, queueName);
+            receiver.RegisterHandler(Handler);
+            Console.ReadKey();
+        }
+
+        private static Task Handler(List<AccessRequest> accessRequestList, CancellationToken cancellationToken)
+        {
+            foreach (AccessRequest accessRequest in accessRequestList)
+            {
+                if (!IsValidCatalog(accessRequest))
+                {
+                    continue;
+                }
+                if (accessRequest.AccessType == AccessType.TorusEligibility)
+                {
+                    UpdateTorusEligibility(accessRequest).Wait();
+                }
+                else
+                {
+                    logger.LogErrorAsync("", $"{accessRequest.AccessType} is not a valid access Type.").Wait();
+                }
+            }
+            return Task.CompletedTask;
+        }
+
+        private static void SetRemoteLogger(string customerId, string sharedKey, string traceTableName)
+        {
+            if (traceTableName == null)
+            {
+                logger = LoggerFactory.CreateLogger(customerId, sharedKey);
+            }
+            else
+            {
+                logger = LoggerFactory.CreateLogger(customerId, sharedKey, traceTableName);
+            }
+        }
+
+        private async static Task UpdateTorusEligibility(AccessRequest accessRequest)
+        {
+            await logger.LogInfoAsync("2c4a69bf-9c8b-4597-93ba-64ed57958487", $"{accessRequest.Operation} {accessRequest.CatalogId} in Torus for {accessRequest.ApplicantId} ... ");
+            if (accessRequest.Operation == AccessOperation.Add)
+            {
+                await AddToTorusEligibility(accessRequest);
+            }
+            else if (accessRequest.Operation == AccessOperation.Remove)
+            {
+                await RemoveFromTorusEligibility(accessRequest);
+            }
+        }
+
+        private static async Task AddToTorusEligibility(AccessRequest accessRequest)
+        {
+            HttpResponseMessage response = await accessRequestsConsumerProvider.AddToEligibility(accessRequest);
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                await logger.LogInfoAsync("9d605915-a1cb-44f4-aa42-9cdbc5ee4df6", $"{accessRequest.CatalogId} for {accessRequest.ApplicantId} has been added to Torus.");
+                await UpsertEligibilityIntoDb(accessRequest);
+            }
+            else
+            {
+                await HandleRequestException(response, accessRequest);
+            }
+        }
+
+        private static async Task RemoveFromTorusEligibility(AccessRequest accessRequest)
+        {
+            HttpResponseMessage response = await accessRequestsConsumerProvider.RemoveFromEligibility(accessRequest);
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                await logger.LogInfoAsync("940f016e-6222-4193-84d2-c891d4cd3110", $"{accessRequest.CatalogId} for {accessRequest.ApplicantId} has been removed from Torus.");
+                await RemoveEligibilityFromDb(accessRequest);
+            }
+            else
+            {
+                await HandleRequestException(response, accessRequest);
+            }
+        }
+
+        private static async Task RemoveEligibilityFromDb(AccessRequest accessRequest)
+        {
+            await logger.LogInfoAsync("2a4db4bb-7db6-434d-9ea9-c1ff692c2664", $"Remove the {accessRequest.CatalogId} in {accessRequest.AccessType} for {accessRequest.ApplicantId} from DB ... ");
+            Access access = accessRequestsConsumerProvider.GetAccessAsync(accessRequest).Result;
+            if (access == null)
+            {
+                await logger.LogErrorAsync("8d5492a8-448f-49ed-8fec-f5fe5dbf52cc", $"{accessRequest.CatalogId} in {accessRequest.AccessType} for {accessRequest.ApplicantId} doesn't exist in DB. ");
+                return;
+            }
+            await accessRequestsConsumerProvider.DeleteAsync(access);
+            await logger.LogInfoAsync("fa273824-3466-40c0-9b68-62475bfcb8a0", $"{accessRequest.CatalogId} in {accessRequest.AccessType} for {accessRequest.ApplicantId} has been removed from DB. ");
+        }
+
+        private static async Task UpsertEligibilityIntoDb(AccessRequest accessRequest)
+        {
+            await logger.LogInfoAsync("ce28acd2-d70d-4a1b-9f5b-3db001891101", $"Add the {accessRequest.CatalogId} in {accessRequest.AccessType} for {accessRequest.ApplicantId} into DB ... ");
+            Access access = new Access
+            {
+                ApplicantId = accessRequest.ApplicantId,
+                CatalogId = accessRequest.CatalogId,
+                AccessType = accessRequest.AccessType,
+                Created = DateTime.UtcNow
+            };
+            await accessRequestsConsumerProvider.UpsertAsync(access);
+            await logger.LogInfoAsync("e42e826b-a126-450d-a2fc-8699732d62e3", $"{accessRequest.CatalogId} in {accessRequest.AccessType} for {accessRequest.ApplicantId} has been added to DB. ");
+        }
+
+        private static async Task HandleRequestException(HttpResponseMessage response, AccessRequest accessRequest)
+        {
+            string content = response.Content.ReadAsStringAsync().Result;
+
+            // Only retry if it's not the eligibility name check failure or user clearance check failure.
+            if (response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                await logger.LogErrorAsync("9a293c29-5ea1-49f6-82a2-4d1065a60db4", $"Response content: {content}. Request received: {JsonConvert.SerializeObject(accessRequest)}.");
+            }
+            else if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                await logger.LogErrorAsync("5a360d3e-50ad-49ca-849e-1cde1883f85c", $"Alias or eligibility is not found. Request received: {JsonConvert.SerializeObject(accessRequest)}.");
+            }
+            else
+            {
+                await logger.LogErrorAsync("08f367a9-0ef8-4427-87f0-15cd89dfe803", $"Response content: {content}. Request received: {JsonConvert.SerializeObject(accessRequest)}.");
+                throw new Exception(content);
+            }
+        }
+
+        private static bool IsValidCatalog(AccessRequest accessRequest)
+        {
+            Catalog catalog = accessRequestsConsumerProvider.GetCatalogAsync(accessRequest.CatalogId).Result;
+            if (catalog == null)
+            {
+                logger.LogErrorAsync("54c92c51-a563-4b9a-b5b3-fde6aa826ea5", $"{accessRequest.CatalogId} is not a valid catalog id. Request received: {JsonConvert.SerializeObject(accessRequest)}.").Wait();
+                return false;
+            }
+            return true;
+        }
+    }
+}
