@@ -1,10 +1,10 @@
 // ***********************************************************************
-// <copyright file="AccessRequestsConsumerProvider.cs" company="Microsoft Corporation">
+// <copyright file="PermissionRequestConsumerProvider.cs" company="Microsoft Corporation">
 //     Copyright (c) Microsoft Corporation. All rights reserved.
 // </copyright>
 // ***********************************************************************
 
-namespace IDEAs.DataPlatform.AccessControl.AccessRequestsConsumer.Providers
+namespace IDEAs.DataPlatform.AccessControl.PermissionRequestConsumer.Providers
 {
     using IDEAs.DataPlatform.AccessControl.CosmosDBLib;
     using IDEAs.DataPlatform.AccessControl.Model;
@@ -12,39 +12,39 @@ namespace IDEAs.DataPlatform.AccessControl.AccessRequestsConsumer.Providers
     using System.Net.Http;
     using System.Threading.Tasks;
 
-    class AccessRequestsConsumerProvider : IAccessRequestsConsumerProvider
+    class PermissionRequestConsumerProvider : IPermissionRequestConsumerProvider
     {
         private readonly CatalogProvider catalogProvider;
         private readonly EligibilityProvider eligibilityProvider;
-        private readonly AccessProvider accessProvider;
+        private readonly PermissionProvider permissionProvider;
 
-        public AccessRequestsConsumerProvider()
+        public PermissionRequestConsumerProvider()
         {
             this.catalogProvider = CatalogProvider.Instance;
             this.eligibilityProvider = EligibilityProvider.Instance;
-            this.accessProvider = AccessProvider.Instance;
+            this.permissionProvider = PermissionProvider.Instance;
         }
 
-        public async Task<HttpResponseMessage> RemoveFromEligibility(AccessRequest accessRequest)
+        public async Task<HttpResponseMessage> RemoveFromEligibility(PermissionRequest permissionRequest)
         {
-            string eligibilityDefinitionName = this.catalogProvider.GetByIdAsync(accessRequest.CatalogId).Result.TagId;
-            return await this.eligibilityProvider.RemoveFromEligibility(accessRequest.ApplicantId, eligibilityDefinitionName);
+            string eligibilityDefinitionName = this.catalogProvider.GetByIdAsync(permissionRequest.CatalogId).Result.TagId;
+            return await this.eligibilityProvider.RemoveFromEligibility(permissionRequest.ApplicantId, eligibilityDefinitionName);
         }
 
-        public async Task<HttpResponseMessage> AddToEligibility(AccessRequest accessRequest)
+        public async Task<HttpResponseMessage> AddToEligibility(PermissionRequest permissionRequest)
         {
-            string eligibilityDefinitionName = this.catalogProvider.GetByIdAsync(accessRequest.CatalogId).Result.TagId;
-            return await this.eligibilityProvider.AddToEligibility(accessRequest.ApplicantId, eligibilityDefinitionName);
+            string eligibilityDefinitionName = this.catalogProvider.GetByIdAsync(permissionRequest.CatalogId).Result.TagId;
+            return await this.eligibilityProvider.AddToEligibility(permissionRequest.ApplicantId, eligibilityDefinitionName);
         }
 
-        public async Task UpsertAsync(Access access)
+        public async Task UpsertAsync(Permission permission)
         {
-            await this.accessProvider.UpsertAsync(access);
+            await this.permissionProvider.UpsertAsync(permission);
         }
 
-        public async Task DeleteAsync(Access access)
+        public async Task DeleteAsync(Permission permission)
         {
-            await this.accessProvider.DeleteAsync(access);
+            await this.permissionProvider.DeleteAsync(permission);
         }
 
         public async Task<Catalog> GetCatalogAsync(string catalogId)
@@ -52,9 +52,9 @@ namespace IDEAs.DataPlatform.AccessControl.AccessRequestsConsumer.Providers
             return await this.catalogProvider.GetByIdAsync(catalogId);
         }
 
-        public async Task<Access> GetAccessAsync(AccessRequest accessRequest)
+        public async Task<Permission> GetPermissionAsync(PermissionRequest permissionRequest)
         {
-            return await this.accessProvider.GetAccessAsync(accessRequest.CatalogId, accessRequest.ApplicantId, accessRequest.AccessType);
+            return await this.permissionProvider.GetPermissionAsync(permissionRequest.CatalogId, permissionRequest.ApplicantId, permissionRequest.PermissionType);
         }
     }
 }
